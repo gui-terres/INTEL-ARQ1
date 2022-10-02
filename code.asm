@@ -30,7 +30,8 @@ NaoCriptoMsg 	db 		256 dup (?)			; Guarda a mensagem NAO criptografada informada
 GuardaFileText 	db 		256 dup (?)			; Guarda o texto contido no arquivo para comparação
 charBuffer 		db 		256 dup (?) 		; Guarda o caracter obtido na GetChar
 tamMaxFile 		equ 	65535				; Tamanho maximo do arquivo = 65535 bytes
-tamanhoFile		dw 		0					; Armazena o tamanho do arquivo em bytes	
+tamanhoFile		dw 		0					; Armazena o tamanho do arquivo em bytes
+tamanhoString 	dw		0					; Armazena o tamanho da string em bytes 
 Contador		dw      0 					; Armazena a posição da letra no arquivo
 
 	; Mensagens de erro
@@ -119,6 +120,10 @@ validacao:
 	LEA 	BX, NaoCriptoMsg		; Passa o endereco efeito de "NaoCriptoMsg" para BX
 	CALL 	validaString			; Chama a funcao de validacao da string
 
+tamString:
+	LEA		BX, NaoCriptoMsg
+	CALL	calcTamString
+
 ;--------------------------------------------------------------------------------
 ; --> Tratamento dos arquivos
 ;--------------------------------------------------------------------------------
@@ -128,7 +133,7 @@ openArqEntrada:
 	LEA		DX, FileNameSrc			; O handle do arquivo de entrada e passado para DX		
 	CALL	fopen					; Funcao de abertura do arquivo e passada
 	MOV		FileHandleSrc, BX		; BX é movido para o handle do arquivo de entrada
-	JNC		createArq				; Nao Carry -> o arquivo foi aberto 
+	JNC		tamArq					; Nao Carry -> o arquivo foi aberto 
 	LEA     BX, MsgCRLF
 	CALL	printf_s				; Imprime uma quebra de linha
 	LEA		BX, ErroOpenFile		; Carry -> Mensagem de erro na abertura
@@ -525,6 +530,18 @@ validaString	proc 	near
 		RET 
 validaString 	endp
 
+calcTamString 	proc	near
+	loop_calcTamString:
+		CMP		byte ptr [BX], 0
+		JE		retorna_calcTamString
+		INC		BX
+		INC		tamanhoString
+		JMP		loop_calcTamString
+
+	retorna_calcTamString:
+		RET
+calcTamString	endp
+
 	; Imprime uma mensagem em caso de erro, fecha o arquivo e encerra o programa
 imprime_encerra_erro 	proc	near
 		CALL 	printf_s					; Imprime a mensagem de erro
@@ -573,9 +590,17 @@ resumoFinal 	proc 	near
 	CALL	br2x
 	LEA 	BX, TamFileEntrada
 	CALL 	printf_s
+	;------------
+	MOV     AX, tamanhoFile
+	CALL	printNb
+	;------------
 	CALL	br2x
 	LEA 	BX, TamFrase
 	CALL 	printf_s
+	;------------
+	MOV		AX, tamanhoString
+	CALL	printNb
+	;------------
 	CALL 	br2x
 	LEA 	BX, TamFileEntrada
 	CALL 	printf_s
@@ -599,5 +624,31 @@ br2x	proc 	near
 	CALL 	printf_s
 	RET
 br2x 	endp
+
+printNb		proc	near          
+    MOV		CX, 0
+    MOV 	DX, 0
+
+    label1:
+        CMP		AX, 0
+        JE  	print1     
+        MOV 	BX, 10       
+        DIV 	BX                 
+        PUSH 	DX             
+        INC 	CX             
+        XOR 	DX, DX
+        JMP 	label1
+    print1:
+        CMP		CX, 0
+        JE 		exit
+        POP 	DX
+        ADD 	DX, 48
+        MOV 	AH, 02h
+        INT 	21H
+        DEC 	CX
+        JMP 	print1
+	exit:
+		RET
+printNb		endp
 
 	end 									; FIM
