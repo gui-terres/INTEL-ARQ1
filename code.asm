@@ -1,8 +1,8 @@
 ;================================================================================
 ;	Funcionalidades:
-;		- Ler um arquivo texto (nome informado pelo usuario sem a extensão .txt);
+;		- Ler um arquivo texto (nome informado pelo usuario sem a extensao .txt);
 ;		- Criptografar o conteudo do arquivo lido;
-;		- Inserir a frase criptograda em um arquivo de saída (MesmoNome.krp);
+;		- Inserir a frase criptograda em um arquivo de saida (MesmoNome.krp);
 ;	Feito por:
 ;		- Guilherme Rafael Terres;
 ;		- Cartao UFRGS: 00338785;
@@ -33,6 +33,9 @@ tamMaxFile 		equ 	65535				; Tamanho maximo do arquivo = 65535 bytes
 tamanhoFile		dw 		0					; Armazena o tamanho do arquivo em bytes
 tamanhoString 	dw		0					; Armazena o tamanho da string em bytes 
 Contador		dw      0 					; Armazena a posição da letra no arquivo
+GuardaPosArq	db		100 dup (?) 		; Vetor para armazenar as posicoes ja acessadas do arquivo
+nrVezesExec 	dw 		0					; Contador para o numero de vezes que a leitura e efetuada
+
 
 	; Mensagens de erro
 ErroOpenFile		db		"Erro na abertura do arquivo.", CR, LF, 0
@@ -110,18 +113,18 @@ usuarioInformaMsg:
 	LEA 	BX, NaoCriptoMsg		; NaoCriptoMsg volta para BX
 
 	; Teste para determinar se a mensagem informada pode ser criptografada
-		; CRITÉRIOS:	
-		; - Caracteres entre " " e "~"
-		; - A frase não pode ter mais de 100 caracteres
-		;=========
-		; OBS: Se alguma dessas condicoes não for atendida, o programa sera encerrado com erro
-		;=========
+	; CRITÉRIOS:	
+	; - Caracteres entre " " e "~"
+	; - A frase não pode ter mais de 100 caracteres
+	; - OBS: Se alguma dessas condicoes não for atendida, o programa sera encerrado com erro
+
 validacao:
 	LEA 	BX, NaoCriptoMsg		; Passa o endereco efeito de "NaoCriptoMsg" para BX
 	CALL 	validaString			; Chama a funcao de validacao da string
 
+	; Calcula o tamanho da string
 tamString:
-	LEA		BX, NaoCriptoMsg
+	LEA		BX, NaoCriptoMsg		
 	CALL	calcTamString
 
 ;--------------------------------------------------------------------------------
@@ -133,7 +136,7 @@ openArqEntrada:
 	LEA		DX, FileNameSrc			; O handle do arquivo de entrada e passado para DX		
 	CALL	fopen					; Funcao de abertura do arquivo e passada
 	MOV		FileHandleSrc, BX		; BX é movido para o handle do arquivo de entrada
-	JNC		tamArq					; Nao Carry -> o arquivo foi aberto 
+	JNC		preTamArq				; Nao Carry -> o arquivo foi aberto 
 	LEA     BX, MsgCRLF
 	CALL	printf_s				; Imprime uma quebra de linha
 	LEA		BX, ErroOpenFile		; Carry -> Mensagem de erro na abertura
@@ -142,21 +145,17 @@ openArqEntrada:
 
 	; Teste para conferir o tamanho do arquivo
 MOV 	CX, 0
-tamArq:
-;	MOV 	BX, FileHandleSrc		; O handle do arquivo de entrada e passado para DX	
-;	CALL 	GetChar					; A funcao GetChar e chamada
-;	JC		erroLeitura				; Se der carry, houve um erro na leitura do arquivo
-;	CMP 	AX, 0					
-;	JE 		createArq				; Chama a funcao para criar o arquivo de destino
-;	INC 	CX						; Incrementa o contador
-;	CMP 	CX, tamMaxFile			; Compara o contador com o 65535
-;	JA 		erroTamFile				; Se for maior: o tamanho do arquivo e maior do que o permitido
-;	JMP 	tamArq					; Volta para o loop
-
+	; Pula o primeiro caracter para evitar overflow em caso de o tamanho ser maior que 65535
+preTamArq:
 	MOV 	BX, FileHandleSrc		; O handle do arquivo de entrada e passado para DX	
 	CALL 	GetChar					; A funcao GetChar e chamada
 	JC		erroLeitura				; Se der carry, houve um erro na leitura do arquivo
-	CMP 	AX, 0					
+
+tamArq:
+	MOV 	BX, FileHandleSrc		; O handle do arquivo de entrada e passado para DX	
+	CALL 	GetChar					; A funcao GetChar e chamada
+	JC		erroLeitura				; Se der carry, houve um erro na leitura do arquivo
+	CMP 	AX, 0					; Se ao ler mais nada, cria o arquivo
 	JE 		createArq				; Chama a funcao para criar o arquivo de destino
 	INC 	tamanhoFile				; Incrementa o contador do tamanho do arquivo
 	MOV		CX, tamanhoFile
@@ -229,7 +228,7 @@ upper:
 ; --> Leitura e escrita no arquivo
 ;--------------------------------------------------------------------------------
  
-LEA 	SI, NaoCriptoMsg						;  BX <- EA (NaoCriptoMsg)
+LEA 	SI, NaoCriptoMsg						; BX <- EA (NaoCriptoMsg)
 
 	; Loop de leitura e escrita no arquivo
 loop_ler_arq:	
@@ -237,35 +236,80 @@ loop_ler_arq:
 	JE 		Final								; Se [SI] = 0, pula para o fim
 	CMP 	byte ptr [SI], 32 					; 32 = Space
 	JE 		nao_faz_nada						; Se [SI] = (space), apenas incrementa o SI
+	JMP 	rewind
+
+		; Fim do programa
+	Final:
+		INC 	tamanhoFile							; Incrementa o tamanho do arquivo para contabilizar o byte desprezado
+		CALL	resumoFinal							; Imprime o resumo das operações 
+		.exit 	0
+
+		; [SI] = 32 -> SPACE
+	nao_faz_nada:								
+		INC		SI								; Incrementa a posição na string
+		JMP 	loop_ler_arq					; Volta para o loop
 
 		; Abre o arquivo de entrada para leitura (também rebobina o arquivo)
 	rewind:	
 		LEA		DX, FileNameSrc					; Move FileNameSrc para DX
 		CALL	fopen							; Abre o arquivo
 		MOV		FileHandleSrc, BX				; FileHandleSrc <- BX
-		JNC		verifica_arquivo				; Nao carry -> compara a letra com o arquivo
+		JNC		first_char       				; Nao carry -> compara a letra com o arquivo
 		LEA		BX, ErroOpenFile				; Imprime a mensagem de erro
 		CALL	printf_s
 		.exit	1
+	
+		; le o primeiro caracter apenas
+	first_char:	
+		INC 	Contador
+		MOV 	BX, FileHandleSrc				; BX <- FileHandleSrc
+		CALL 	GetChar							; "Pega" um caracter 
+		JC 		informa_erro					; Carry <- Informa o erro
+		CMP 	AX, 0							; Se chegar no fim do arquivo, pula
+		JE 		fim_file
 
+		; Verifica o arquivo
 	verifica_arquivo:	
  		MOV 	BX, FileHandleSrc				; BX <- FileHandleSrc
 		CALL 	GetChar							; "Pega" um caracter 
 		JC 		informa_erro					; Carry <- Informa o erro
 		CMP 	AX, 0							; Se chegar no fim do arquivo, pula
 		JE 		fim_file
-		;---------Toupper---------
+		;---------Toupper---------;				; Converte o caracter tirado do arquivo em maiusculo
 		MOV		charBuffer, DL 					
 		LEA 	BX, charBuffer
 		CALL  	toupper
 		MOV  	DL, charBuffer
-		;-------------------------
+		;-------------------------;
 		CMP 	[SI], DL						; Compara o caracter em [SI] com DL
-		JE 		addArq							; Se igual, adiciona no arquivo
+		JE 		trata_array						; Se igual, adiciona no arquivo
 		INC   	Contador						; Incrementa a posição 
 		JMP 	verifica_arquivo
 
+	trata_array:
+		LEA 	BX, GuardaPosArq				; EA do array GuardaPosArq em BX
+		PUSH 	SI								; Coloca o SI na pilha (endereco da posicao atual da string)
+		MOV 	SI, Contador					; SI <- Contador (posicao calculada no arquivo)
+		
+		loop_trata_array:
+			CMP		byte ptr [BX], 0			; Chegou no fim do array
+			JE 		addArq						; Pula para adicionar a posicao no arquivo
+			CMP 	[BX], SI					; Compara a posicao identificada no arquivo com o conteudo do array
+			JE		jah_existe					; Se ja existe, pula para ignorar o caracter
+			INC 	BX							; Senao, incrementa a posicao no array 
+			POP 	SI							; Coloca o elemento da pilha em SI
+			JMP 	loop_trata_array			; Volta para o loop
+
+		jah_existe:
+			POP 	SI							; Retira o EA da string da pilha e acrescenta em SI
+			INC 	SI							; Incrementa o EA contido em SI
+			JMP 	verifica_arquivo			; Volta para verificar o arquivo
+
 	addArq:
+		CALL 	add_array						; Adiciona a posicao no arquivo 
+		INC 	nrVezesExec
+		POP 	SI								; Retira o elemento da pilha e coloca no SI
+		;----------------------------------------------------------------------------------;
 		MOV 	BX, FileHandleDst				; Move handle do arquivo de destino para BX	
 		LEA 	DI, Contador					; Move a posição para DI
 		MOV		DL, [DI]						; Move o conteudo do endereço de DI para DL 
@@ -282,24 +326,23 @@ loop_ler_arq:
 		CALL	fclose							; Fecha o arquivo
 		JMP 	loop_ler_arq					; Volta para o loop
 
-	nao_faz_nada:								
-		INC		SI								; Incrementa a posição na string
-		JMP 	loop_ler_arq					; Volta para o loop
-
 	; Informa o erro na leitura do arquivo
 informa_erro:
 	LEA 	BX, ErroReadFile
 	CALL 	printf_s
 	.exit 	1
 
-	; Fim do programa
-Final:
-	CALL	resumoFinal							; Imprime o resumo das operações 
-	.exit 	0
-
 ;================================================================================
 ;									FUNCOES
 ;================================================================================	
+
+	; Adiciona a posicao no array
+add_array 	proc 	near
+	LEA 	BX, GuardaPosArq
+	MOV		[BX + nrVezesExec], SI
+
+	RET
+add_array	endp
 
 	; Poe um caracter no arquivo
 setChar		proc	near
@@ -342,7 +385,7 @@ NomeEntrada		proc	near
 	RET								; Fim da subrotina
 NomeEntrada		endp
 
-	; Função de impressão na tela (printf)
+	; Funcao de impressao na tela (printf)
 printf_s	proc	near
 	MOV		DL, [BX]				; Passa o conteúdo de BX para DL, byte por byte
 	CMP		DL, 0					; Enquanto o byte for != de \0, continua...
@@ -360,37 +403,37 @@ Ret_printf_s:
 	RET								; Fim da subrotina
 printf_s	endp
 
-	; Função de entrada (scanf)
+	; Funcao de entrada (scanf)
 gets		proc	near
-	PUSH	BX								; Coloca o endereço armazenado em BX na pilha
+	PUSH	BX								
 
-	MOV		AH, 0AH							; Lê uma linha do teclado
+	MOV		AH, 0AH							
 	LEA		DX, String
-	MOV		byte ptr String, MAXSTRING-4	; 2 caracteres no inicio e um eventual CR LF no final
+	MOV		byte ptr String, MAXSTRING-4	
 	INT		21H
 
-	LEA		SI, String+2					; Copia do buffer de teclado para o FileNameSrc
+	LEA		SI, String+2					
 	POP		DI
 	MOV		CL, String+1
 	MOV		CH, 0
-	MOV		AX, DS							; Ajusta ES=DS para poder usar o MOVSB
+	MOV		AX, DS							
 	MOV		ES, AX
 	REP 	MOVSB
 
-	MOV		byte ptr ES:[DI], 0				; Coloca marca de fim de string
+	MOV		byte ptr ES:[DI], 0				
 	RET
 gets		endp
 
-	; Função de abertura do arquivo (fopen)
+	; Funcao de abertura do arquivo (fopen)
 fopen		proc	near
 	MOV		AL, 0
-	MOV		AH, 3DH							; Define o AH = 3DH (condição de abertura)
+	MOV		AH, 3DH							; Define o AH = 3DH (condicao de abertura)
 	INT		21H
 	MOV		BX, AX
 	RET
 fopen		endp
 
-	; Função de abertura do arquivo para escrita (fwrite)
+	; Funcao de abertura do arquivo para escrita (fwrite)
 fwrite 		proc 	near
 	MOV		AL, 1
 	MOV		AH, 3DH							; Define o AH = 3DH (condição de abertura)
@@ -399,7 +442,7 @@ fwrite 		proc 	near
 	RET
 fwrite 		endp
 
-	; Função para criação de arquivo (fcreate)
+	; Funcao para criação de arquivo (fcreate)
 fcreate 	proc 	near
 	MOV		CX, 0
 	MOV		AH, 3CH
@@ -408,7 +451,7 @@ fcreate 	proc 	near
 	RET
 fcreate 	endp
 
-	; Função para fechar um arquivo (fclose)
+	; Funcao para fechar um arquivo (fclose)
 fclose		proc	near
 	mov		ah,3eh
 	int		21h
@@ -416,7 +459,7 @@ fclose		proc	near
 fclose		endp
 
 	; --------------------------------------------------
-	; Função para colocar a extensão no arquivo
+	; Funcao para colocar a extensao no arquivo
 	; * BX <- FileNameSrc
 	; * DI <- extTXT, extKRP
 	; --------------------------------------------------
@@ -424,16 +467,16 @@ fclose		endp
 ext		proc 	near
 	MOV 	AL, 0
 	loop_ext:
-		CMP 	[BX], AL					; Compara com a posição do ponteiro com zero
+		CMP 	[BX], AL					; Compara com a posicao do ponteiro com zero
 		JE		coloca_ext					; Se igual a zero: chegou no fim da string - pula para colocar a extensão
-		INC 	BX							; Caso não, incrementa o ponteiro que percorre a string
-		JMP 	loop_ext					; Volta para o início do loop
+		INC 	BX							; Caso nao, incrementa o ponteiro que percorre a string
+		JMP 	loop_ext					; Volta para o inicio do loop
 
 	coloca_ext:
-		CMP		[DI], AL					; Compara o conteúdo do endereço apontado por DI com 0
+		CMP		[DI], AL					; Compara o conteudo do endereco apontado por DI com 0
 		JE		retorna_ext					; Se for igual significa que todos os caracteres foram inseridos
-		MOV		CX, [DI]					; Move o conteúdo da posição de memória guardada DI (extensão) para o registrador CX
-		MOV		[BX], CX					; Move o conteúdo de CX (extensão) para o nome do arquivo
+		MOV		CX, [DI]					; Move o conteudo da posicao de memoria guardada DI (extensao) para o registrador CX
+		MOV		[BX], CX					; Move o conteudo de CX (extensão) para o nome do arquivo
 		ADD		BX, 1						; Incrementa BX
 		ADD		DI, 1						; Incrementa DI
 		
@@ -442,14 +485,14 @@ ext		proc 	near
 	retorna_ext:
 		MOV		AX, 0
 		MOV		BX, 0
-		MOV 	CX, 0						; Zera todos os registradores utilizados antes de voltar da função
+		MOV 	CX, 0						; Zera todos os registradores utilizados antes de voltar da funcao
 		MOV 	DI, 0						
 
-		RET 								; Retorna da função
+		RET 								; Retorna da funcao
 ext 	endp
 
 	; -----------------------------------------------------------------------
-	; Função para copiar o nome do arquivo de entrada para o arquivo de saída
+	; Funcao para copiar o nome do arquivo de entrada para o arquivo de saida
 	; * BX <- FileNameSrc
 	; * DI <- FileNameDst
 	; -----------------------------------------------------------------------
@@ -457,10 +500,10 @@ ext 	endp
 arqFinal	proc	near
 	MOV 	AL, 0
 	loop_arqFinal:
-		CMP 	[BX], AL					; Compara o conteúdo do endereço apontado por BX com 0
+		CMP 	[BX], AL					; Compara o conteúdo do endereco apontado por BX com 0
 		JE 		retorna_loop_arqFinal 		; Se igual 0, chegou no final da string - pula para o fim
-		MOV 	CX, [BX]					; Move conteúdo do endereço guardado por BX para CX - FileNameSrc
-		MOV 	[DI], CX					; Move o conteúdo de CX para o endereço guardado por DI - FileNameDst
+		MOV 	CX, [BX]					; Move conteúdo do endereco guardado por BX para CX - FileNameSrc
+		MOV 	[DI], CX					; Move o conteudo de CX para o endereco guardado por DI - FileNameDst
 		INC 	BX
 		INC		DI
 		JMP 	loop_arqFinal
@@ -477,22 +520,24 @@ arqFinal 	endp
 	; Analisa a mensagem informada pelo usuário e verifica se ele pode ser criptografada
 validaString	proc 	near
 		; Analisa o tamanho da frase em caracteres
-	MOV 	AL, 0
 		; Analisa o tamanho da string
+	
+	MOV		CX, 0							; Zera CX
+
 	loop_tam_string:
 		CMP 	CX, 101						; Compara o contador com 101
-		JE 		ErroTamanho					; Se for igual, informa que o tamanho da frase não é permitido 
-		CMP		[BX], AL					; Caso não, não continua a analise - testa se chegou ao fim da string
-		JE 		testeFraseVazia				; Pula para a próxima análise
+		JE 		ErroTamanho					; Se for igual, informa que o tamanho da frase nao é permitido 
+		CMP		byte ptr [BX], 0			; Caso nao, nao continua a analise - testa se chegou ao fim da string
+		JE 		testeFraseVazia				; Pula para a proxima análise
 		INC 	BX							; Incrementa BX - Navegar pela string
 		INC     CX							; Incrementa o contador CX
 		JMP 	loop_tam_string				; Volta para o início do loop
 
-	testeFraseVazia:
+	testeFraseVazia:						; Se nada for digitado, informa o erro
 		CMP 	CX, 0
 		JE 		ErroVazio
 
-		; Dá um "reset" nas configurações para continuar com a execução da função
+		; Da um "reset" nas configurações para continuar com a execucao da funcao
 	resetConfig:	
 		LEA  	BX, NaoCriptoMsg
 		MOV 	AX, 0
@@ -500,18 +545,18 @@ validaString	proc 	near
 
 		; Analisa intervalo do caracter
 	loop_intervalo:
-		CMP 	byte ptr [BX], ' '
+		CMP 	byte ptr [BX], ' '			; Se [BX] < (space), informa o erro
 		JL		ErroIntervalo
-		CMP 	byte ptr [BX], '~'
+		CMP 	byte ptr [BX], '~'			; Se [BX] > ~, informa o erro
 		JG 		ErroIntervalo
-		INC 	BX
-		CMP 	[BX], CL 
-		JE 		retorna_validaString
-		JMP     loop_intervalo
+		INC 	BX							; Incrementa BX - Navegar pela string
+		CMP 	byte ptr [BX], 0			; Se [BX] = 0 -> string terminou 	
+		JE 		retorna_validaString		; Pula para o retorno da funcao
+		JMP     loop_intervalo				; Volta para o inicio do loop
 
 		; Informa erros
 	ErroIntervalo:
-		LEA 	BX, ErroRange				; Informa o erro do intervalo de representação
+		LEA 	BX, ErroRange				; Informa o erro do intervalo de representacao
 		CALL 	imprime_encerra_erro
 
 	ErroTamanho:
@@ -530,14 +575,16 @@ validaString	proc 	near
 		RET 
 validaString 	endp
 
+	; Calcula o tamanho da string
 calcTamString 	proc	near
 	loop_calcTamString:
-		CMP		byte ptr [BX], 0
-		JE		retorna_calcTamString
-		INC		BX
-		INC		tamanhoString
-		JMP		loop_calcTamString
+		CMP		byte ptr [BX], 0 			; Se [BX] = 0, a string chegou ao fim
+		JE		retorna_calcTamString		; Pula para o retorno da funcao 
+		INC		BX							; Incrementa BX (ponteiro da string) -> Navegar pela string
+		INC		tamanhoString				; Incrementa o contador para calcular o tamanho da string
+		JMP		loop_calcTamString			; Retorna para o loop
 
+		; Retorna da funcao
 	retorna_calcTamString:
 		RET
 calcTamString	endp
@@ -545,15 +592,15 @@ calcTamString	endp
 	; Imprime uma mensagem em caso de erro, fecha o arquivo e encerra o programa
 imprime_encerra_erro 	proc	near
 		CALL 	printf_s					; Imprime a mensagem de erro
-		LEA		BX, MsgCRLF					; Move o endereço efeitivo de MsgCRLF (quebra de linha)
+		LEA		BX, MsgCRLF					; Move o endereço efetivo de MsgCRLF (quebra de linha)
 		CALL 	printf_s					; Imprime a quebra
 		CALL 	fclose						; Fecha o arquivo
 
 retorna_imprime_encerra_erro:
 		.exit 	1	 						; Retorna o valor 1 e fecha encerra a execução
-		
 imprime_encerra_erro 	endp
 
+	; Transforma o caracter em maiusculo
 toupper 	proc 	near
 	loop_toupper:
 		CMP 	byte ptr [BX], 0					; Compara o ponteiro da string com zero - verifica se a string chegou ao fim
@@ -567,57 +614,76 @@ toupper 	proc 	near
 			
 			; Teste se o caracter está entre 'a' e 'z'
 		testaLow:
-			CMP		byte ptr [BX], 'a'			; Se for menor que 'a'
-			JB		inc_ponteiro
-			CMP		byte ptr [BX], 'z'						
+			CMP		byte ptr [BX], 'a'			; Se for menor que 'a', pula para incrementar o BX e voltar para o loop
+			JB		inc_ponteiro			
+			CMP		byte ptr [BX], 'z'			; Se for maior que 'z', pula para incrementar o BX e voltar para o loop				
 			JA		inc_ponteiro
-			SUB		byte ptr [BX], 20h	
+			SUB		byte ptr [BX], 20H			; Subtrai 20H para transformar o caracter em maiusculo
 		inc_ponteiro:	
-			INC 	BX
-		JMP 	loop_toupper
+			INC 	BX							; Incrementa BX -> Navegar pela string
+			JMP 	loop_toupper
 
+		; Retorno da funcao
 	retorna_toupper:
 		MOV 	BX, 0
 		RET
 toupper 	endp
 
+	; --------------------------------------------------
+	; Imprime o resumo final contendo:
+	; - Tamanho do arquivo de entrada - em bytes.
+	; - Tamanho da frase - em bytes.
+	; - Nome do arquivo de saida.
+	; - Mensagem de sucesso.
+	; - OBS: funcao "br2x" - line feed duas vezes.
+	; --------------------------------------------------
+
 resumoFinal 	proc 	near
-	LEA 	BX, MsgCRLF
-	CALL  	printf_s
-	CALL	 br2x
-	LEA 	BX, Separador
+	LEA 	BX, MsgCRLF				;	
+	CALL  	printf_s				; Imprime os espacos
+	CALL	br2x					;
+
+		; Tamanho do arquivo de entrada - bytes.
+	LEA 	BX, Separador			; Imprime o separador: "===============..."
 	CALL 	printf_s
-	CALL	br2x
-	LEA 	BX, TamFileEntrada
-	CALL 	printf_s
-	;------------
-	MOV     AX, tamanhoFile
-	CALL	printNb
-	;------------
-	CALL	br2x
-	LEA 	BX, TamFrase
-	CALL 	printf_s
-	;------------
-	MOV		AX, tamanhoString
-	CALL	printNb
-	;------------
+	CALL	br2x					; Quebra de linha dupla
+	LEA 	BX, TamFileEntrada		; Carrega em BX o EA da mensagem de interação que informa o tamanho do arquivo de entrada
+	CALL 	printf_s				; Imprime [BX]
+	MOV     AX, tamanhoFile			
+	CALL	printNb					; Imprime o tamanho do arquivo 
+
+	CALL	br2x					; Quebra de linha dupla
+
+		; Tamanho da frase - em bytes.
+	LEA 	BX, TamFrase			; Carrega em BX o EA da mensagem de interação que informa o tamanho da frase
+	CALL 	printf_s				; Imprime [BX]
+	MOV		AX, tamanhoString	
+	CALL	printNb					; Imprime o tamanho da string
+
+	CALL 	br2x					; Quebra de linha dupla
+
+		; Nome do arquivo de saida
+	LEA 	BX, NomeFileSaida		; Carrega em BX o EA da mensagem de interação que informa o nome do arquivo de saida
+	CALL 	printf_s				; Imprime [BX]
+	LEA 	BX, FileNameDst			; Carrega em BX o EA do nome do arquivo de saida
+	CALL 	printf_s				; Imprime o nome do arquivo de saida ".krp"
+
+	CALL 	br2x					; Quebra de linha dupla
+
+		; Mensagem de sucesso
+	LEA 	BX, Resultado			; Informa que o processamento ocorreu sem erros
+	CALL 	printf_s				; Imprime [BX]
 	CALL 	br2x
-	LEA 	BX, TamFileEntrada
+
+	LEA 	BX, Separador			; Imprime o separador: "===============..."	
 	CALL 	printf_s
-	LEA 	BX, FileNameDst
-	CALL 	printf_s
-	CALL 	br2x
-	LEA 	BX, Resultado
-	CALL 	printf_s
-	CALL 	br2x
-	LEA 	BX, Separador
-	CALL 	printf_s
-	LEA 	BX, MsgCRLF
+	LEA 	BX, MsgCRLF				; Imprime uma quebra de linha
 	CALL  	printf_s
 
 	RET
 resumoFinal 	endp
 
+	; Imprime quebra de linha dupla
 br2x	proc 	near
 	LEA 	BX, MsgCRLF
 	CALL 	printf_s
@@ -625,30 +691,32 @@ br2x	proc 	near
 	RET
 br2x 	endp
 
+	; Imprime inteiros
+	; OBS: funcao obtida na internet. Fonte: https://www.geeksforgeeks.org/8086-program-to-print-a-16-bit-decimal-number/ 
 printNb		proc	near          
-    MOV		CX, 0
+    MOV		CX, 0					; Zera os registradores CX e DX
     MOV 	DX, 0
 
-    label1:
+    loop_printNb:
         CMP		AX, 0
-        JE  	print1     
+        JE  	print_number     
         MOV 	BX, 10       
         DIV 	BX                 
         PUSH 	DX             
         INC 	CX             
         XOR 	DX, DX
-        JMP 	label1
-    print1:
+        JMP 	loop_printNb
+    print_number:
         CMP		CX, 0
-        JE 		exit
+        JE 		retorna_printNb
         POP 	DX
         ADD 	DX, 48
         MOV 	AH, 02h
         INT 	21H
         DEC 	CX
-        JMP 	print1
-	exit:
+        JMP 	print_number
+	retorna_printNb:
 		RET
 printNb		endp
 
-	end 									; FIM
+	end 									
