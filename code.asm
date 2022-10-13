@@ -26,16 +26,18 @@ FileNameDst		db		256 dup (?)			; Nome do arquivo a ser escrito
 FileHandleSrc	dw		0					; Handler do arquivo origem
 FileHandleDst	dw		0					; Handler do arquivo destino
 FileBuffer		db		10 	dup (?)			; Buffer de leitura/escrita do arquivo
-NaoCriptoMsg 	db 		256 dup (?)			; Guarda a mensagem NAO criptografada informada pelo usuário
-GuardaFileText 	db 		256 dup (?)			; Guarda o texto contido no arquivo para comparação
+NaoCriptoMsg 	db 		256 dup (?)			; Guarda a mensagem NAO criptografada informada pelo usuario
+GuardaFileText 	db 		256 dup (?)			; Guarda o texto contido no arquivo para comparacao
 charBuffer 		db 		256 dup (?) 		; Guarda o caracter obtido na GetChar
 tamMaxFile 		equ 	65535				; Tamanho maximo do arquivo = 65535 bytes
 tamanhoFile		dw 		0					; Armazena o tamanho do arquivo em bytes
 tamanhoString 	dw		0					; Armazena o tamanho da string em bytes 
-Contador		dw      0 					; Armazena a posição da letra no arquivo
-GuardaPosArq	db		100 dup (?) 		; Vetor para armazenar as posicoes ja acessadas do arquivo
-nrVezesExec 	dw 		0					; Contador para o numero de vezes que a leitura e efetuada
-
+Contador		dw      0 					; Armazena a posicao da letra no arquivo
+GuardaPosArq	dw		200 dup (?) 		; Vetor para armazenar as posicoes ja acessadas do arquivo
+flag			db		0					; Flag para verificar se o caractere existe no arquivo
+tamanho			dw		0					; Armazena o tamanho do array
+pt1 			dw		6553
+pt2				dw		6
 
 	; Mensagens de erro
 ErroOpenFile		db		"Erro na abertura do arquivo.", CR, LF, 0
@@ -43,16 +45,17 @@ ErroCreateFile		db		"Erro na criacao do arquivo.", CR, LF, 0
 ErroReadFile		db		"Erro na leitura do arquivo.", CR, LF, 0
 ErroWriteFile		db		"Erro na escrita do arquivo.", CR, LF, 0
 ErroSizeSentence    db  	"Erro: A frase e grande demais para ser criptografada.", CR, LF, 0
-ErroRange			db  	"Erro: Os caracteres estao fora da faixa de representacao.", CR, LF, 0
+ErroRange			db  	"Erro: Algum caractere esta fora da faixa de representacao.", CR, LF, 0
 ErroOpenFWrite 		db 		"Erro: Nao foi possivel abrir o arquivo para escrita.", CR, LF, 0
 ErroEmptySentence   db 		"Erro: A frase informada nao contem informacoes.", 0
 ErroBigFile 		db 		"Erro: O arquivo e grande demais.", CR, LF, 0
+ErroNotFind			db      "Erro: O caractere nao pode ser encontrado no arquivo", CR, LF, 0
 
-	; Mensagens de interação com o usuário
+	; Mensagens de interacao com o usuario
 InformaFileName		db		"Nome do arquivo de origem: ", 0
 InformaMsg 			db 		"Entre com uma mensagem para ser criptografada: ", 0
 
-	; Mensagens de atualização
+	; Mensagens de atualizacao
 AbreArq				db 		"O arquivo foi aberto para leitura com sucesso!", 0
 CriaArq 			db 		"O arquivo foi criado com sucesso!", 0
 WriteArq			db 		"O arquivo foi aberto para escrita com sucesso!", 0
@@ -67,7 +70,7 @@ Resultado 			db 		"Processamento realizado sem erro.", 0
 MsgCRLF				db		CR, LF, 0 		; Quebra de linha - \n
 Separador 			db 		"=============================", 0
 	
-	; Constantes e variaveis usadas na função gets
+	; Constantes e variaveis usadas na funcao gets
 MAXSTRING	equ		200
 String		db		MAXSTRING dup (?)	
 
@@ -82,41 +85,41 @@ extKRP 		db 		".krp", 0				; Constante .krp
 	.code		
 	.startup
 
-	CALL	NomeEntrada				; Chama a funcao NomeEntrada (entrar com o nome do arquivo sem a extensão)
+	CALL	NomeEntrada				; Chama a funcao NomeEntrada (entrar com o nome do arquivo sem a extensao)
 	
 	; Define o nome do arquivo de saida
 arqSaida:
-	LEA 	BX, FileNameSrc 		; Passa o endereço efetivo de FileNameSrc para o registrador BX
-	LEA 	DI, FileNameDst			; Passa o endereço efetivo de FileNameSrc para o registrador CX
+	LEA 	BX, FileNameSrc 		; Passa o endereco efetivo de FileNameSrc para o registrador BX
+	LEA 	DI, FileNameDst			; Passa o endereco efetivo de FileNameSrc para o registrador CX
 	CALL 	arqFinal				; Chama a funcao "arqFinal" - nome do arquivo final = nome do arquivo inicial
 
 	; Adiciona ".txt" ao nome arquivo de entrada
 addTXT:
-	LEA 	BX, FileNameSrc			; Passa o endereço efetivo de FileNameSrc para o registrador BX
-	LEA		DI, extTXT				; Passa o endereço efetivo de extTXT para DI 
+	LEA 	BX, FileNameSrc			; Passa o endereco efetivo de FileNameSrc para o registrador BX
+	LEA		DI, extTXT				; Passa o endereco efetivo de extTXT para DI 
 	CALL 	ext						; Chama a funcao "ext" - colocar a extensao ".txt"
 
 	; Adiciona ".krp" ao nome do arquivo de saida
 addKRP:
-	LEA 	BX, FileNameDst			; Passa o endereço efetivo de FileNameSrc para o registrador BX
-	LEA 	DI, extKRP				; Passa o endereço efetivo de extKRP para DI
+	LEA 	BX, FileNameDst			; Passa o endereco efetivo de FileNameSrc para o registrador BX
+	LEA 	DI, extKRP				; Passa o endereco efetivo de extKRP para DI
 	CALL 	ext						; Chama a funcao "ext" - colocar a extensao ".krp"
 
 	; Informar a mensagem a ser criptografada
 usuarioInformaMsg: 	
-	LEA 	BX, InformaMsg			; Passa o endereço efetivo de InformaMsg para o registrador BX
-	CALL 	printf_s				; Chama a funcao de impressão
-	LEA		BX, NaoCriptoMsg		; Carrega o endereço de NaoCriptoMsg para BX
+	LEA 	BX, InformaMsg			; Passa o endereco efetivo de InformaMsg para o registrador BX
+	CALL 	printf_s				; Chama a funcao de impressao
+	LEA		BX, NaoCriptoMsg		; Carrega o endereco de NaoCriptoMsg para BX
 	CALL	gets					; Chama a funcao gets
 	LEA 	BX, MsgCRLF
 	CALL 	printf_s				; Printa uma quebra de linha
 	LEA 	BX, NaoCriptoMsg		; NaoCriptoMsg volta para BX
 
 	; Teste para determinar se a mensagem informada pode ser criptografada
-	; CRITÉRIOS:	
+	; CRITERIOS:	
 	; - Caracteres entre " " e "~"
-	; - A frase não pode ter mais de 100 caracteres
-	; - OBS: Se alguma dessas condicoes não for atendida, o programa sera encerrado com erro
+	; - A frase nao pode ter mais de 100 caracteres
+	; - OBS: Se alguma dessas condicoes nao for atendida, o programa sera encerrado com erro
 
 validacao:
 	LEA 	BX, NaoCriptoMsg		; Passa o endereco efeito de "NaoCriptoMsg" para BX
@@ -135,8 +138,8 @@ tamString:
 openArqEntrada: 
 	LEA		DX, FileNameSrc			; O handle do arquivo de entrada e passado para DX		
 	CALL	fopen					; Funcao de abertura do arquivo e passada
-	MOV		FileHandleSrc, BX		; BX é movido para o handle do arquivo de entrada
-	JNC		preTamArq				; Nao Carry -> o arquivo foi aberto 
+	MOV		FileHandleSrc, BX		; BX e movido para o handle do arquivo de entrada
+	JNC		preTamArq					; Nao Carry -> o arquivo foi aberto 
 	LEA     BX, MsgCRLF
 	CALL	printf_s				; Imprime uma quebra de linha
 	LEA		BX, ErroOpenFile		; Carry -> Mensagem de erro na abertura
@@ -150,6 +153,8 @@ preTamArq:
 	MOV 	BX, FileHandleSrc		; O handle do arquivo de entrada e passado para DX	
 	CALL 	GetChar					; A funcao GetChar e chamada
 	JC		erroLeitura				; Se der carry, houve um erro na leitura do arquivo
+	CMP 	AX, 0					; Se ao ler mais nada, cria o arquivo
+	JE 		createArq				; Chama a funcao para criar o arquivo de destino
 
 tamArq:
 	MOV 	BX, FileHandleSrc		; O handle do arquivo de entrada e passado para DX	
@@ -159,8 +164,8 @@ tamArq:
 	JE 		createArq				; Chama a funcao para criar o arquivo de destino
 	INC 	tamanhoFile				; Incrementa o contador do tamanho do arquivo
 	MOV		CX, tamanhoFile
-	CMP 	CX, tamMaxFile			; Compara o contador com o 65535
-	JA 		erroTamFile				; Se for maior: o tamanho do arquivo e maior do que o permitido
+	CMP 	CX, 0					; Compara o contador com o 65535 ;;;;;;;;
+	JE 		erroTamFile				; Se for maior: o tamanho do arquivo e maior do que o permitido
 	JMP 	tamArq					; Volta para o loop
 
 	; Mensagem de erro na leitura do arquivo
@@ -186,7 +191,7 @@ createArq:
 	LEA 	BX, AbreArq
 	CALL 	printf_s
 		; Cria arquivo ".krp"
-	LEA 	DX, FileNameDst			; Move o handle do arquivo de saída para DX
+	LEA 	DX, FileNameDst			; Move o handle do arquivo de saida para DX
 	CALL 	fcreate					; Chama a funcao de criacao do arquivo
 	MOV		FileHandleDst, BX		; FileHandleDst <- BX
 	JNC		openFWrite				; Nao Carry -> Abrir o arquivo para escrita
@@ -229,27 +234,62 @@ upper:
 ;--------------------------------------------------------------------------------
  
 LEA 	SI, NaoCriptoMsg						; BX <- EA (NaoCriptoMsg)
+JMP		loop_ler_arq
 
 	; Loop de leitura e escrita no arquivo
+pre_loop_ler_arq:
+	CMP		flag, 0								; Compara a flag com zero
+	JNE		loop_ler_arq						; Se nao igual, pula para loop_ler_arq
+	LEA		BX, MsgCRLF							; Imprime quebra de linha
+	CALL	printf_s
+	LEA		BX, MsgCRLF							; Imprime quebra de linha
+	CALL	printf_s
+	LEA		BX, ErroNotFind						; Informa o erro
+	CALL	printf_s
+	.exit 	1
+
 loop_ler_arq:	
 	CMP 	byte ptr [SI], 0					; Verifica o fim da string
-	JE 		Final								; Se [SI] = 0, pula para o fim
+	JE		Final								; Se [SI] = 0, pula para o fim
 	CMP 	byte ptr [SI], 32 					; 32 = Space
 	JE 		nao_faz_nada						; Se [SI] = (space), apenas incrementa o SI
 	JMP 	rewind
 
-		; Fim do programa
 	Final:
-		INC 	tamanhoFile							; Incrementa o tamanho do arquivo para contabilizar o byte desprezado
-		CALL	resumoFinal							; Imprime o resumo das operações 
-		.exit 	0
+		MOV		BX, FileHandleDst				; Move o FileHandleDst para BX
+		MOV		AH, 40H							; AH <- 40H
+		MOV 	CX, tamanho						; CX <- tamanho
+		LEA 	DX, GuardaPosArq				; DX <- GuardaPosArq (array de posicoes)
+		INT 	21H 							; Chama a interrupcao
+    	JNC  	acabou							; Se nao der carry, pula para o fim
+    	LEA 	BX, ErroWriteFile				; Se der carry, imprime o erro de escrita no arquivo
+    	CALL 	printf_s
+    	.exit 	1
+		
+		acabou:
+			MOV		BX, FileHandleDst			; Move o handle do arquivo de destino para BX
+			MOV		DL, 0						; DL <- 0
+			CALL	setChar						; Imprime o zero no fim do arquivo de destino
+			INC 	tamanhoFile					; Incrementa o tamanho do arquivo para contabilizar o byte desprezado
+			MOV		AX, tamanhoFile
+			CMP		AX, 0
+			JE		bytes
+			CALL	resumoFinal					; Imprime o resumo das operacoes 
+			JMP		close
+			bytes:
+				CALL 	resumoFinal65536
+			close:
+				MOV 	BX, FileHandleSrc			; Fecha o arquivo de entrada
+				CALL	fclose
+				MOV		BX, FileHandleDst			; Fecha o arquivo de saida
+				CALL	fclose
+			.exit 	0
 
-		; [SI] = 32 -> SPACE
 	nao_faz_nada:								
-		INC		SI								; Incrementa a posição na string
+		INC		SI								; Incrementa a posicao na string
 		JMP 	loop_ler_arq					; Volta para o loop
 
-		; Abre o arquivo de entrada para leitura (também rebobina o arquivo)
+		; Abre o arquivo de entrada para leitura (tambem rebobina o arquivo)
 	rewind:	
 		LEA		DX, FileNameSrc					; Move FileNameSrc para DX
 		CALL	fopen							; Abre o arquivo
@@ -268,6 +308,8 @@ loop_ler_arq:
 		CMP 	AX, 0							; Se chegar no fim do arquivo, pula
 		JE 		fim_file
 
+	MOV		flag, 0								; Inicializa a flag com zero
+
 		; Verifica o arquivo
 	verifica_arquivo:	
  		MOV 	BX, FileHandleSrc				; BX <- FileHandleSrc
@@ -282,67 +324,53 @@ loop_ler_arq:
 		MOV  	DL, charBuffer
 		;-------------------------;
 		CMP 	[SI], DL						; Compara o caracter em [SI] com DL
-		JE 		trata_array						; Se igual, adiciona no arquivo
-		INC   	Contador						; Incrementa a posição 
-		JMP 	verifica_arquivo
+		JE 		Array							; Se igual, verifica se a posicao ja foi adicionada
+		INC   	Contador						; Incrementa a posicao 
+		JMP 	verifica_arquivo				; Volta para o loop
 
-	trata_array:
-		LEA 	BX, GuardaPosArq				; EA do array GuardaPosArq em BX
-		PUSH 	SI								; Coloca o SI na pilha (endereco da posicao atual da string)
-		MOV 	SI, Contador					; SI <- Contador (posicao calculada no arquivo)
-		
-		loop_trata_array:
-			CMP		byte ptr [BX], 0			; Chegou no fim do array
-			JE 		addArq						; Pula para adicionar a posicao no arquivo
-			CMP 	[BX], SI					; Compara a posicao identificada no arquivo com o conteudo do array
-			JE		jah_existe					; Se ja existe, pula para ignorar o caracter
-			INC 	BX							; Senao, incrementa a posicao no array 
-			POP 	SI							; Coloca o elemento da pilha em SI
-			JMP 	loop_trata_array			; Volta para o loop
+	Array:
+		MOV		DI, Contador					; DI <- Contador
+		LEA		BX, GuardaPosArq				; BX <- GuardaPosArq (array de posicoes)
 
-		jah_existe:
-			POP 	SI							; Retira o EA da string da pilha e acrescenta em SI
-			INC 	SI							; Incrementa o EA contido em SI
-			JMP 	verifica_arquivo			; Volta para verificar o arquivo
+		; Comparar
+		compArrayCont:
+			CMP		word ptr [BX], 0			; Se chegar no fim do array, pula para addArq
+			JE		addArq
+			CMP		[BX], DI					; Se a posicao for igual ao conteudo do arry, volta para o loop
+			JE 		volta
+			ADD		BX, 2						; BX += 2
+			JMP		compArrayCont				; Volta para o loop
+
+			volta:								; Volta para verifica_arquivo
+				INC		Contador
+				JMP		verifica_arquivo
 
 	addArq:
-		CALL 	add_array						; Adiciona a posicao no arquivo 
-		INC 	nrVezesExec
-		POP 	SI								; Retira o elemento da pilha e coloca no SI
-		;----------------------------------------------------------------------------------;
-		MOV 	BX, FileHandleDst				; Move handle do arquivo de destino para BX	
-		LEA 	DI, Contador					; Move a posição para DI
-		MOV		DL, [DI]						; Move o conteudo do endereço de DI para DL 
-		CALL	setChar							; Imprime DL no arquivo de saída
-		INC		SI								; Incrementa a posição na string
-		MOV		Contador, 0						; Zera a posição no arquivo
-		MOV		BX, FileHandleSrc				
+		MOV		AX, Contador					; Move o contador para AX
+		MOV		[BX], AX						; Move AX para o array
+		MOV		Contador, 0						; Zera a posicao no arquivo
+		ADD		tamanho, 2						; tamanho += 2
+		INC     flag							; Incrementa a flag
+		INC 	SI								; Incrementa posicao da frase
+		MOV		BX, FileHandleSrc
 		CALL 	fclose							; Fecha o arquivo
-		JMP 	loop_ler_arq				 	; Volta para o loop
-	
+		JMP 	pre_loop_ler_arq				; Volta para o loop	
+		
+		; Informa o erro na leitura do arquivo
+	informa_erro:
+		LEA 	BX, ErroReadFile
+		CALL 	printf_s
+		.exit 	1
+
 	fim_file:
-		INC 	SI								; Incrementa a posição na string
+		INC 	SI								; Incrementa a posicao na string
 		MOV		BX, FileHandleSrc				
 		CALL	fclose							; Fecha o arquivo
-		JMP 	loop_ler_arq					; Volta para o loop
-
-	; Informa o erro na leitura do arquivo
-informa_erro:
-	LEA 	BX, ErroReadFile
-	CALL 	printf_s
-	.exit 	1
+		JMP 	pre_loop_ler_arq				; Volta para o loop
 
 ;================================================================================
 ;									FUNCOES
 ;================================================================================	
-
-	; Adiciona a posicao no array
-add_array 	proc 	near
-	LEA 	BX, GuardaPosArq
-	MOV		[BX + nrVezesExec], SI
-
-	RET
-add_array	endp
 
 	; Poe um caracter no arquivo
 setChar		proc	near
@@ -371,33 +399,33 @@ GetChar		endp
 
 NomeEntrada		proc	near
 		; Imprime InformaFileName
-	LEA		BX, InformaFileName		; Carrega o endereço de InformaFileName para BX
-	CALL	printf_s				; Chama a função printf_s	
+	LEA		BX, InformaFileName		; Carrega o endereco de InformaFileName para BX
+	CALL	printf_s				; Chama a funcao printf_s	
 		
 		; Recebe o nome do arquivo
-	LEA		BX, FileNameSrc			; Carrega o endereço de FileNameSrc para BX
-	CALL	gets					; Chama a função gets
+	LEA		BX, FileNameSrc			; Carrega o endereco de FileNameSrc para BX
+	CALL	gets					; Chama a funcao gets
 	
 		; Imprime quebra de linha
-	LEA		BX, MsgCRLF				; Carrega o endereço de MsgCRLF para BX
-	CALL	printf_s				; Chama a função printf_s
+	LEA		BX, MsgCRLF				; Carrega o endereco de MsgCRLF para BX
+	CALL	printf_s				; Chama a funcao printf_s
 	
 	RET								; Fim da subrotina
 NomeEntrada		endp
 
 	; Funcao de impressao na tela (printf)
 printf_s	proc	near
-	MOV		DL, [BX]				; Passa o conteúdo de BX para DL, byte por byte
+	MOV		DL, [BX]				; Passa o conteudo de BX para DL, byte por byte
 	CMP		DL, 0					; Enquanto o byte for != de \0, continua...
-	JE		Ret_printf_s			; Senão, retorna da subrotina
+	JE		Ret_printf_s			; Senao, retorna da subrotina
 
-	PUSH 	BX						; Coloca o endereço contido em BX na pilha
+	PUSH 	BX						; Coloca o endereco contido em BX na pilha
 	MOV		AH, 2					
-	INT		21H						; Define o tipo de interrupçao
-	POP		BX						; Tira o elemento do topo da pilha e põe em BX
+	INT		21H						; Define o tipo de interrupcao
+	POP		BX						; Tira o elemento do topo da pilha e poe em BX
 
-	INC		BX						; Incrementa para pegar o próximo byte (caracter)
-	JMP		printf_s				; Volta para o início da função
+	INC		BX						; Incrementa para pegar o proximo byte (caracter)
+	JMP		printf_s				; Volta para o inicio da funcao
 		
 Ret_printf_s:
 	RET								; Fim da subrotina
@@ -436,13 +464,13 @@ fopen		endp
 	; Funcao de abertura do arquivo para escrita (fwrite)
 fwrite 		proc 	near
 	MOV		AL, 1
-	MOV		AH, 3DH							; Define o AH = 3DH (condição de abertura)
+	MOV		AH, 3DH							; Define o AH = 3DH (condicao de abertura)
 	INT		21H
 	MOV		BX, AX
 	RET
 fwrite 		endp
 
-	; Funcao para criação de arquivo (fcreate)
+	; Funcao para criacao de arquivo (fcreate)
 fcreate 	proc 	near
 	MOV		CX, 0
 	MOV		AH, 3CH
@@ -468,7 +496,7 @@ ext		proc 	near
 	MOV 	AL, 0
 	loop_ext:
 		CMP 	[BX], AL					; Compara com a posicao do ponteiro com zero
-		JE		coloca_ext					; Se igual a zero: chegou no fim da string - pula para colocar a extensão
+		JE		coloca_ext					; Se igual a zero: chegou no fim da string - pula para colocar a extensao
 		INC 	BX							; Caso nao, incrementa o ponteiro que percorre a string
 		JMP 	loop_ext					; Volta para o inicio do loop
 
@@ -476,7 +504,7 @@ ext		proc 	near
 		CMP		[DI], AL					; Compara o conteudo do endereco apontado por DI com 0
 		JE		retorna_ext					; Se for igual significa que todos os caracteres foram inseridos
 		MOV		CX, [DI]					; Move o conteudo da posicao de memoria guardada DI (extensao) para o registrador CX
-		MOV		[BX], CX					; Move o conteudo de CX (extensão) para o nome do arquivo
+		MOV		[BX], CX					; Move o conteudo de CX (extensao) para o nome do arquivo
 		ADD		BX, 1						; Incrementa BX
 		ADD		DI, 1						; Incrementa DI
 		
@@ -500,9 +528,9 @@ ext 	endp
 arqFinal	proc	near
 	MOV 	AL, 0
 	loop_arqFinal:
-		CMP 	[BX], AL					; Compara o conteúdo do endereco apontado por BX com 0
+		CMP 	[BX], AL					; Compara o conteudo do endereco apontado por BX com 0
 		JE 		retorna_loop_arqFinal 		; Se igual 0, chegou no final da string - pula para o fim
-		MOV 	CX, [BX]					; Move conteúdo do endereco guardado por BX para CX - FileNameSrc
+		MOV 	CX, [BX]					; Move conteudo do endereco guardado por BX para CX - FileNameSrc
 		MOV 	[DI], CX					; Move o conteudo de CX para o endereco guardado por DI - FileNameDst
 		INC 	BX
 		INC		DI
@@ -510,14 +538,14 @@ arqFinal	proc	near
 
 	retorna_loop_arqFinal:
 		MOV 	AX, 0
-		MOV 	BX, 0						; Zera todos os registradores utilizados antes de voltar da função
+		MOV 	BX, 0						; Zera todos os registradores utilizados antes de voltar da funcao
 		MOV 	CX, 0
 		MOV 	DI, 0
 
 		RET
 arqFinal 	endp
 
-	; Analisa a mensagem informada pelo usuário e verifica se ele pode ser criptografada
+	; Analisa a mensagem informada pelo usuario e verifica se ele pode ser criptografada
 validaString	proc 	near
 		; Analisa o tamanho da frase em caracteres
 		; Analisa o tamanho da string
@@ -526,18 +554,18 @@ validaString	proc 	near
 
 	loop_tam_string:
 		CMP 	CX, 101						; Compara o contador com 101
-		JE 		ErroTamanho					; Se for igual, informa que o tamanho da frase nao é permitido 
+		JE 		ErroTamanho					; Se for igual, informa que o tamanho da frase nao e permitido 
 		CMP		byte ptr [BX], 0			; Caso nao, nao continua a analise - testa se chegou ao fim da string
-		JE 		testeFraseVazia				; Pula para a proxima análise
+		JE 		testeFraseVazia				; Pula para a proxima analise
 		INC 	BX							; Incrementa BX - Navegar pela string
 		INC     CX							; Incrementa o contador CX
-		JMP 	loop_tam_string				; Volta para o início do loop
+		JMP 	loop_tam_string				; Volta para o inicio do loop
 
 	testeFraseVazia:						; Se nada for digitado, informa o erro
 		CMP 	CX, 0
 		JE 		ErroVazio
 
-		; Da um "reset" nas configurações para continuar com a execucao da funcao
+		; Da um "reset" nas configuracoes para continuar com a execucao da funcao
 	resetConfig:	
 		LEA  	BX, NaoCriptoMsg
 		MOV 	AX, 0
@@ -592,12 +620,12 @@ calcTamString	endp
 	; Imprime uma mensagem em caso de erro, fecha o arquivo e encerra o programa
 imprime_encerra_erro 	proc	near
 		CALL 	printf_s					; Imprime a mensagem de erro
-		LEA		BX, MsgCRLF					; Move o endereço efetivo de MsgCRLF (quebra de linha)
+		LEA		BX, MsgCRLF					; Move o endereco efetivo de MsgCRLF (quebra de linha)
 		CALL 	printf_s					; Imprime a quebra
 		CALL 	fclose						; Fecha o arquivo
 
 retorna_imprime_encerra_erro:
-		.exit 	1	 						; Retorna o valor 1 e fecha encerra a execução
+		.exit 	1	 						; Retorna o valor 1 e fecha encerra a execucao
 imprime_encerra_erro 	endp
 
 	; Transforma o caracter em maiusculo
@@ -612,7 +640,7 @@ toupper 	proc 	near
 		JA 		testaLow					
 		JMP 	inc_ponteiro						; Senao, apenas incrementa o ponteiro
 			
-			; Teste se o caracter está entre 'a' e 'z'
+			; Teste se o caracter esta entre 'a' e 'z'
 		testaLow:
 			CMP		byte ptr [BX], 'a'			; Se for menor que 'a', pula para incrementar o BX e voltar para o loop
 			JB		inc_ponteiro			
@@ -647,7 +675,7 @@ resumoFinal 	proc 	near
 	LEA 	BX, Separador			; Imprime o separador: "===============..."
 	CALL 	printf_s
 	CALL	br2x					; Quebra de linha dupla
-	LEA 	BX, TamFileEntrada		; Carrega em BX o EA da mensagem de interação que informa o tamanho do arquivo de entrada
+	LEA 	BX, TamFileEntrada		; Carrega em BX o EA da mensagem de interacao que informa o tamanho do arquivo de entrada
 	CALL 	printf_s				; Imprime [BX]
 	MOV     AX, tamanhoFile			
 	CALL	printNb					; Imprime o tamanho do arquivo 
@@ -655,7 +683,7 @@ resumoFinal 	proc 	near
 	CALL	br2x					; Quebra de linha dupla
 
 		; Tamanho da frase - em bytes.
-	LEA 	BX, TamFrase			; Carrega em BX o EA da mensagem de interação que informa o tamanho da frase
+	LEA 	BX, TamFrase			; Carrega em BX o EA da mensagem de interacao que informa o tamanho da frase
 	CALL 	printf_s				; Imprime [BX]
 	MOV		AX, tamanhoString	
 	CALL	printNb					; Imprime o tamanho da string
@@ -663,7 +691,7 @@ resumoFinal 	proc 	near
 	CALL 	br2x					; Quebra de linha dupla
 
 		; Nome do arquivo de saida
-	LEA 	BX, NomeFileSaida		; Carrega em BX o EA da mensagem de interação que informa o nome do arquivo de saida
+	LEA 	BX, NomeFileSaida		; Carrega em BX o EA da mensagem de interacao que informa o nome do arquivo de saida
 	CALL 	printf_s				; Imprime [BX]
 	LEA 	BX, FileNameDst			; Carrega em BX o EA do nome do arquivo de saida
 	CALL 	printf_s				; Imprime o nome do arquivo de saida ".krp"
@@ -682,6 +710,59 @@ resumoFinal 	proc 	near
 
 	RET
 resumoFinal 	endp
+
+resumoFinal65536 	proc 	near
+	LEA 	BX, MsgCRLF				;	
+	CALL  	printf_s				; Imprime os espacos
+	CALL	br2x					;
+
+		; Tamanho do arquivo de entrada - bytes.
+	LEA 	BX, Separador			; Imprime o separador: "===============..."
+	CALL 	printf_s
+	CALL	br2x					; Quebra de linha dupla
+	LEA 	BX, TamFileEntrada		; Carrega em BX o EA da mensagem de interacao que informa o tamanho do arquivo de entrada
+	CALL 	printf_s				; Imprime [BX]
+
+	;-----------
+	;MOV     AX, tamanhoFile			
+	;CALL	printNb					; Imprime o tamanho do arquivo 
+	;-----------
+
+	MOV		AX, pt1
+	CALL	printNb
+	MOV		AX,	pt2
+	CALL	printNb
+
+	CALL	br2x					; Quebra de linha dupla
+
+		; Tamanho da frase - em bytes.
+	LEA 	BX, TamFrase			; Carrega em BX o EA da mensagem de interacao que informa o tamanho da frase
+	CALL 	printf_s				; Imprime [BX]
+	MOV		AX, tamanhoString	
+	CALL	printNb					; Imprime o tamanho da string
+
+	CALL 	br2x					; Quebra de linha dupla
+
+		; Nome do arquivo de saida
+	LEA 	BX, NomeFileSaida		; Carrega em BX o EA da mensagem de interacao que informa o nome do arquivo de saida
+	CALL 	printf_s				; Imprime [BX]
+	LEA 	BX, FileNameDst			; Carrega em BX o EA do nome do arquivo de saida
+	CALL 	printf_s				; Imprime o nome do arquivo de saida ".krp"
+
+	CALL 	br2x					; Quebra de linha dupla
+
+		; Mensagem de sucesso
+	LEA 	BX, Resultado			; Informa que o processamento ocorreu sem erros
+	CALL 	printf_s				; Imprime [BX]
+	CALL 	br2x
+
+	LEA 	BX, Separador			; Imprime o separador: "===============..."	
+	CALL 	printf_s
+	LEA 	BX, MsgCRLF				; Imprime uma quebra de linha
+	CALL  	printf_s
+
+	RET
+resumoFinal65536 	endp
 
 	; Imprime quebra de linha dupla
 br2x	proc 	near
@@ -719,4 +800,4 @@ printNb		proc	near
 		RET
 printNb		endp
 
-	end 									
+	end 		
